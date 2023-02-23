@@ -1,7 +1,7 @@
 // META: script=helpers.js
 'use strict';
 
-const {expectAccessAllowed, testPrefix, topLevelDocument} = processQueryParams();
+const {secure, testPrefix, topLevelDocument} = processQueryParams();
 
 // Common tests to run in all frames.
 test(() => {
@@ -10,15 +10,23 @@ test(() => {
 
 promise_test(async () => {
   const hasAccess = await document.hasStorageAccess();
-  assert_equals(hasAccess, expectAccessAllowed, "Access should be granted by default: " + expectAccessAllowed);
-}, "[" + testPrefix + "] document.hasStorageAccess() should be allowed by default: " + expectAccessAllowed);
+  if (secure) {
+    assert_true(hasAccess, "Access should be granted by default.");
+  } else {
+    assert_false(hasAccess, "Access should not be granted in insecure contexts.");
+  }
+}, `[${testPrefix}] document.hasStorageAccess() should be ${secure ? "allowed" : "disallowed"} by default.`);
 
-promise_test(async () => {
+promise_test(async (t) => {
+  const description = "Promise should reject when called on a generated document not part of the DOM.";
   const createdDocument = document.implementation.createDocument("", null);
 
-  const hasAccess = await createdDocument.hasStorageAccess();
-  assert_false(hasAccess, "Access should be denied to a generated document not part of the DOM.");
-}, "[" + testPrefix + "] document.hasStorageAccess() should work on a document object.");
+  // Can't use `promise_rejects_dom` here, since the error comes from the wrong global.
+  await createdDocument.hasStorageAccess().then(
+    t.unreached_func("Should have rejected: " + description), (e) => {
+      assert_equals(e.name, 'InvalidStateError', description);
+    });
+}, "[" + testPrefix + "] document.hasStorageAccess() should reject in a document that isn't fully active.");
 
 // Logic to load test cases within combinations of iFrames.
 if (topLevelDocument) {
